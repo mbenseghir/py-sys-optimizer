@@ -61,7 +61,7 @@ else:
     SCRIPT_DIR = Path(__file__).parent.resolve()
 os.chdir(SCRIPT_DIR)
 
-LOG_FILE = SCRIPT_DIR / "win_kiosk_optimizer.log"
+LOG_FILE = Path(r"C:\win_kiosk_optimizer.log")
 
 WIN_VER_MAJOR = sys.getwindowsversion().major
 IS_WIN10_OR_LATER = WIN_VER_MAJOR >= 10
@@ -371,8 +371,7 @@ def download_file(url, target_path):
         logging.info(f"[DESCARGA COMPLETADA] Archivo guardado en {target_path}")
     except Exception as e:
         logging.error(f"[ERROR DE DESCARGA SSL] Falló urllib, usando PowerShell fallback: {e}")
-        # FALLBACK INVENCIBLE: Si Python falla por SSL, usa el motor nativo de Windows
-        run_powershell(f"Invoke-WebRequest -Uri '{url}' -OutFile '{target_path}'")
+        run_powershell(f"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{url}' -OutFile '{target_path}' -UseBasicParsing")
 
 # ==============================================================================
 # 1. USUARIO, UAC Y AUTOLOGON (SMART)
@@ -1486,10 +1485,13 @@ def setup_admira_watchdog():
             return
 
         logging.info("Configurando el Guardián Centinela (Watchdog) de Admira Player...")
+        admira_exe = CONFIG['ADMIRA_MAIN_EXE']
+        admira_dir = str(Path(admira_exe).parent)
         watchdog_script = (
-            f"$p = '{CONFIG['ADMIRA_MAIN_EXE']}'; "
+            f"$p = '{admira_exe}'; "
+            f"$d = '{admira_dir}'; "
             "if ((Test-Path $p) -and (-not (Get-Process admira -ErrorAction SilentlyContinue))) { "
-            "Start-Process -FilePath $p "
+            "Start-Process -FilePath $p -WorkingDirectory $d "
             "}"
         )
         cmd_action = f'powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -Command \\\"{watchdog_script}\\\"'
