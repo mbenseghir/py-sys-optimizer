@@ -50,6 +50,7 @@ import urllib.request
 import logging
 import shutil
 from pathlib import Path
+import ssl
 
 # ==============================================================================
 # RESOLUCIÓN DEL DIRECTORIO BASE DE EJECUCIÓN (FIX BUG CARPETAS RELATIVAS)
@@ -338,30 +339,40 @@ def download_file(url, target_path):
     req = urllib.request.Request(url, headers=headers)
     Path(target_path).parent.mkdir(parents=True, exist_ok=True)
 
-    with urllib.request.urlopen(req) as response:
-        total_size = int(response.info().get('Content-Length', 0))
-        downloaded = 0
-        chunk_size = 1024 * 512
+    # FIX: Anular verificación SSL porque Python portable no tiene certificados raíz
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
 
-        with open(target_path, "wb") as out_file:
-            while True:
-                chunk = response.read(chunk_size)
-                if not chunk:
-                    break
-                out_file.write(chunk)
-                downloaded += len(chunk)
+    try:
+        with urllib.request.urlopen(req, context=ctx) as response:
+            total_size = int(response.info().get('Content-Length', 0))
+            downloaded = 0
+            chunk_size = 1024 * 512
 
-                if total_size > 0:
-                    percent = (downloaded / total_size) * 100
-                    mb_down = downloaded / (1024 * 1024)
-                    mb_total = total_size / (1024 * 1024)
-                    print(f"\r  -> Progreso: {mb_down:.1f} MB / {mb_total:.1f} MB ({percent:.1f}%)", end="", flush=True)
-                else:
-                    mb_down = downloaded / (1024 * 1024)
-                    print(f"\r  -> Progreso: {mb_down:.1f} MB descargados...", end="", flush=True)
+            with open(target_path, "wb") as out_file:
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    out_file.write(chunk)
+                    downloaded += len(chunk)
 
-    print(" \033[92m[COMPLETADO]\033[0m")
-    logging.info(f"[DESCARGA COMPLETADA] Archivo guardado en {target_path}")
+                    if total_size > 0:
+                        percent = (downloaded / total_size) * 100
+                        mb_down = downloaded / (1024 * 1024)
+                        mb_total = total_size / (1024 * 1024)
+                        print(f"\r  -> Progreso: {mb_down:.1f} MB / {mb_total:.1f} MB ({percent:.1f}%)", end="", flush=True)
+                    else:
+                        mb_down = downloaded / (1024 * 1024)
+                        print(f"\r  -> Progreso: {mb_down:.1f} MB descargados...", end="", flush=True)
+
+        print(" \033[92m[COMPLETADO]\033[0m")
+        logging.info(f"[DESCARGA COMPLETADA] Archivo guardado en {target_path}")
+    except Exception as e:
+        logging.error(f"[ERROR DE DESCARGA SSL] Falló urllib, usando PowerShell fallback: {e}")
+        # FALLBACK INVENCIBLE: Si Python falla por SSL, usa el motor nativo de Windows
+        run_powershell(f"Invoke-WebRequest -Uri '{url}' -OutFile '{target_path}'")
 
 # ==============================================================================
 # 1. USUARIO, UAC Y AUTOLOGON (SMART)
@@ -386,7 +397,8 @@ def setup_user_and_autologon():
             logging.info(f"  [OMITIDO] El usuario '{target}' ya existe en el sistema.")
 
         uac_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
-        smart_set_reg(winreg.HKEY_LOCAL_MACHINE, uac_path, "EnableLUA", 0, winreg.REG_DWORD)
+        # FIX: Evitar error 0xc0000005 en Configuración (UAC silencioso pero activo para UWP)
+        smart_set_reg(winreg.HKEY_LOCAL_MACHINE, uac_path, "EnableLUA", 1, winreg.REG_DWORD)
         smart_set_reg(winreg.HKEY_LOCAL_MACHINE, uac_path, "ConsentPromptBehaviorAdmin", 0, winreg.REG_DWORD)
         smart_set_reg(winreg.HKEY_LOCAL_MACHINE, uac_path, "PromptOnSecureDesktop", 0, winreg.REG_DWORD)
         smart_set_reg(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Lsa", "LimitBlankPasswordUse", 0, winreg.REG_DWORD)
@@ -471,9 +483,10 @@ def setup_desktop_ui():
         smart_set_reg(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", "LogPixels", 96, winreg.REG_DWORD)
         smart_set_reg(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", "Win8DpiScaling", 1, winreg.REG_DWORD)
 
-        # 3.5 Auto-ocultar la barra de tareas (Soporte nativo Win 11 24H2 y fallback Legacy)
+        # FIX: Ocultar barra de tareas nativa en Win 11 24H2
         smart_set_reg(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarAutoHide", 1, winreg.REG_DWORD)
-        
+        run_powershell("$p='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StuckRects3'; if (Test-Path $p) { $v=(Get-ItemProperty $p).Settings; $v[8]=3; Set-ItemProperty $p -Name Settings -Value $v }")
+
         for stuck in [r"Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3", 
                       r"Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects2"]:
             try:
@@ -598,6 +611,13 @@ def disable_notifications_and_updates():
         # Ocultar icono de salud / banderita de Security Center del área de notificación
         smart_set_reg(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer", "HideSCAHealth", 1, winreg.REG_DWORD)
         smart_set_reg(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer", "HideSCAHealth", 1, winreg.REG_DWORD)
+
+        # FIX: Anular icono residual de SecurityHealth en el arranque
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as key:
+                winreg.DeleteValue(key, "SecurityHealth")
+        except Exception:
+            pass
 
         # 5.2 MATAR DE RAÍZ LA PLATAFORMA PUSH DE NOTIFICACIONES (WpnService y WpnUserService dinámicos)
         logging.info("Aniquilando servicios de notificaciones push (WpnService / WpnUserService)...")
