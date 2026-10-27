@@ -1254,16 +1254,11 @@ def setup_amp_winoff():
             try:
                 download_file(url, installer)
                 logging.info("Instalando AMP WinOFF silenciosamente...")
-                # FIX: Parámetros más agresivos para Windows 11
-                cmd_install = f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL'
-                try:
-                    subprocess.run(cmd_install, shell=True, timeout=35)
-                except subprocess.TimeoutExpired:
-                    logging.warning("El instalador excedió el tiempo. Forzando cierre...")
-
+                # FIX: Forzar idioma (LANG=es) para saltar el cuadro de diálogo que bloquea la instalación
+                run_cmd(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL /LANG=es')
+                
                 time.sleep(2)
                 subprocess.run("taskkill /f /im WinOFF.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(f'taskkill /f /im {Path(installer).name}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as exc:
                 logging.error(f"Error al descargar/instalar AMP WinOFF: {exc}")
                 return
