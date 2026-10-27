@@ -1254,10 +1254,11 @@ def setup_amp_winoff():
             try:
                 download_file(url, installer)
                 logging.info("Instalando AMP WinOFF silenciosamente...")
-                # FIX: Forzar idioma (LANG=es) para saltar el cuadro de diálogo que bloquea la instalación
-                run_cmd(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL /LANG=es')
-                
-                time.sleep(2)
+                # FIX: Instalador terco. Lo lanzamos y le inyectamos un "Enter" fantasma para saltar el idioma
+                run_powershell(f'Start-Process -FilePath "{installer}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"')
+                time.sleep(3)
+                run_powershell('$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys("{ENTER}")')
+                time.sleep(4)
                 subprocess.run("taskkill /f /im WinOFF.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as exc:
                 logging.error(f"Error al descargar/instalar AMP WinOFF: {exc}")
