@@ -370,8 +370,8 @@ def download_file(url, target_path):
         print(" \033[92m[COMPLETADO]\033[0m")
         logging.info(f"[DESCARGA COMPLETADA] Archivo guardado en {target_path}")
     except Exception as e:
-        logging.error(f"[ERROR DE DESCARGA SSL] Falló urllib, usando PowerShell fallback: {e}")
-        run_powershell(f"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{url}' -OutFile '{target_path}' -UseBasicParsing")
+        logging.error(f"[ERROR DE DESCARGA SSL] Falló urllib, usando WebClient fallback: {e}")
+        run_powershell(f"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('{url}', '{target_path}')")
 
 # ==============================================================================
 # 1. USUARIO, UAC Y AUTOLOGON (SMART)
