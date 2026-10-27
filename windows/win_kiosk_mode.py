@@ -1345,9 +1345,9 @@ def setup_nettime():
             try:
                 download_file(url, installer)
                 logging.info("Instalando NetTime silenciosamente...")
-                # FIX: Instalación agresiva PowerShell
-                ps_nettime = f'Start-Process -FilePath "{installer}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/NOCANCEL" -Wait -NoNewWindow'
-                run_powershell(ps_nettime)
+                run_powershell(f'Start-Process -FilePath "{installer}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -NoNewWindow')
+                time.sleep(15)
+                subprocess.run(f'taskkill /f /im {Path(installer).name}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as exc:
                 logging.error(f"Error descargando/instalando NetTime: {exc}")
                 return
