@@ -1174,6 +1174,9 @@ def setup_teamviewer():
             smart_set_reg(winreg.HKEY_LOCAL_MACHINE, r_key, "AutoUpdate", 0, winreg.REG_DWORD)
             smart_set_reg(winreg.HKEY_LOCAL_MACHINE, r_key, "Always_Online", 1, winreg.REG_DWORD)
 
+        if tv_exe:
+            smart_set_reg(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "TeamViewer", f'"{tv_exe}"', winreg.REG_SZ)
+
         tvopt_file = SCRIPT_DIR / CONFIG["TV_SETTINGS_TVOPT"]
         if tvopt_file.is_file() and tv_exe and os.path.isfile(tv_exe):
             logging.info(f"Importando perfil .tvopt ({tvopt_file})...")
@@ -1254,11 +1257,10 @@ def setup_amp_winoff():
             try:
                 download_file(url, installer)
                 logging.info("Instalando AMP WinOFF silenciosamente...")
-                # FIX: Instalador terco. Lo lanzamos y le inyectamos un "Enter" fantasma para saltar el idioma
-                run_powershell(f'Start-Process -FilePath "{installer}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"')
-                time.sleep(3)
-                run_powershell('$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys("{ENTER}")')
-                time.sleep(4)
+                # FIX: Método bruto. Extrae al instante pero se cuelga. Lo abrimos y lo matamos a los 10s.
+                subprocess.Popen(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL', shell=True)
+                time.sleep(10)
+                subprocess.run(f'taskkill /f /im {Path(installer).name}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 subprocess.run("taskkill /f /im WinOFF.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as exc:
                 logging.error(f"Error al descargar/instalar AMP WinOFF: {exc}")
@@ -1343,8 +1345,9 @@ def setup_nettime():
             try:
                 download_file(url, installer)
                 logging.info("Instalando NetTime silenciosamente...")
-                # FIX: Parámetros más agresivos
-                run_cmd(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL')
+                # FIX: Instalación agresiva PowerShell
+                ps_nettime = f'Start-Process -FilePath "{installer}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/NOCANCEL" -Wait -NoNewWindow'
+                run_powershell(ps_nettime)
             except Exception as exc:
                 logging.error(f"Error descargando/instalando NetTime: {exc}")
                 return
