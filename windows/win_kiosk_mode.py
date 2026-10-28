@@ -1258,13 +1258,18 @@ def setup_amp_winoff():
                 download_file(url, installer)
                 logging.info("Instalando AMP WinOFF (Root Cause Fix: Ejecución desacoplada)...")
                 
-                # Lanzar el instalador de forma independiente para que no bloquee a Python
-                subprocess.Popen(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL', shell=True)
+                # Parámetros estrictos InnoSetup: destino explícito y omisión de comprobación de idioma
+                cmd_winoff = f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL /DIR="{CONFIG["WINOFF_INSTALL_DIR"]}"'
+                subprocess.Popen(cmd_winoff, shell=True)
                 
-                # Esperamos 20s de cortesía para la extracción, matando la app si intenta autolanzarse
                 for _ in range(10):
                     time.sleep(2)
                     subprocess.run("taskkill /f /im WinOFF.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                if winoff_exe.is_file():
+                    logging.info(f"  [EXITO] WinOFF verificado en disco: {winoff_exe}")
+                else:
+                    logging.warning(f"  [AVISO] WinOFF no encontrado en {winoff_exe} tras la extracción.")
             except Exception as exc:
                 logging.error(f"Error al descargar/instalar AMP WinOFF: {exc}")
                 return
