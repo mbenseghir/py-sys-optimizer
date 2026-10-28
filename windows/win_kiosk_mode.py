@@ -1256,12 +1256,15 @@ def setup_amp_winoff():
         if not winoff_exe.is_file():
             try:
                 download_file(url, installer)
-                logging.info("Instalando AMP WinOFF silenciosamente...")
-                # FIX: Método bruto. Extrae al instante pero se cuelga. Lo abrimos y lo matamos a los 10s.
+                logging.info("Instalando AMP WinOFF (Root Cause Fix: Ejecución desacoplada)...")
+                
+                # Lanzar el instalador de forma independiente para que no bloquee a Python
                 subprocess.Popen(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL', shell=True)
-                time.sleep(10)
-                subprocess.run(f'taskkill /f /im {Path(installer).name}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run("taskkill /f /im WinOFF.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Esperamos 20s de cortesía para la extracción, matando la app si intenta autolanzarse
+                for _ in range(10):
+                    time.sleep(2)
+                    subprocess.run("taskkill /f /im WinOFF.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as exc:
                 logging.error(f"Error al descargar/instalar AMP WinOFF: {exc}")
                 return
@@ -1344,10 +1347,15 @@ def setup_nettime():
         if not nettime_exe.is_file():
             try:
                 download_file(url, installer)
-                logging.info("Instalando NetTime silenciosamente...")
-                run_powershell(f'Start-Process -FilePath "{installer}" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -NoNewWindow')
-                time.sleep(15)
-                subprocess.run(f'taskkill /f /im {Path(installer).name}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                logging.info("Instalando NetTime (Root Cause Fix: Ejecución desacoplada)...")
+                
+                # Lanzar de forma independiente para evitar el secuestro del proceso hijo
+                subprocess.Popen(f'"{installer}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL', shell=True)
+                
+                # Bucle de contención: evita que NetTime.exe bloquee el script
+                for _ in range(10):
+                    time.sleep(2)
+                    subprocess.run("taskkill /f /im NetTime.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as exc:
                 logging.error(f"Error descargando/instalando NetTime: {exc}")
                 return
